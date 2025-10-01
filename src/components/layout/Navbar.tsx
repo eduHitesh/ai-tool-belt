@@ -22,7 +22,7 @@ const Navbar = () => {
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              TinyAI
+              Kunal AI
             </span>
           </Link>
 
