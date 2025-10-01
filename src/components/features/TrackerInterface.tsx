@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { sendTrackerPrompt } from "@/lib/api";
 import { Loader2, Send, User, Bot } from "lucide-react";
 
 interface Message {
@@ -20,11 +19,12 @@ const TrackerInterface = () => {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [streamingMessage, setStreamingMessage] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatHistory, isLoading]);
+  }, [chatHistory, isLoading, streamingMessage]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,12 +35,38 @@ const TrackerInterface = () => {
     setPrompt("");
     setIsLoading(true);
     setError(null);
+    setStreamingMessage("");
 
     setChatHistory(prev => [...prev, { role: "user", content: userMessage }]);
 
     try {
-      const result = await sendTrackerPrompt(userMessage);
-      setChatHistory(prev => [...prev, { role: "ai", content: result.response }]);
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+      const response = await fetch(`${apiUrl}/tracker`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: userMessage }),
+      });
+
+      if (!response.ok || !response.body) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get a streaming response.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        fullResponse += chunk;
+        setStreamingMessage(fullResponse);
+      }
+
+      setChatHistory(prev => [...prev, { role: "ai", content: fullResponse }]);
+      setStreamingMessage("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
       setChatHistory(prev => [
@@ -89,10 +115,14 @@ const TrackerInterface = () => {
               <Bot className="w-4 h-4 text-white" />
             </div>
             <div className="rounded-2xl px-4 py-3 bg-muted">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm text-muted-foreground">Thinking...</span>
-              </div>
+              {streamingMessage ? (
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">{streamingMessage}</p>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm text-muted-foreground">Thinking...</span>
+                </div>
+              )}
             </div>
           </div>
         )}

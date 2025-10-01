@@ -2,12 +2,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
-import { summarizeText } from "@/lib/api";
 import { Loader2, FileText } from "lucide-react";
 
 const SummarizerInterface = () => {
   const [text, setText] = useState("");
-  const [summary, setSummary] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,12 +16,32 @@ const SummarizerInterface = () => {
     if (!text.trim()) return;
 
     setIsLoading(true);
-    setSummary(null);
+    setSummary("");
     setError(null);
 
     try {
-      const result = await summarizeText(text);
-      setSummary(result.summary);
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+      const response = await fetch(`${apiUrl}/summarize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!response.ok || !response.body) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get a streaming response.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        setSummary((prev) => prev + chunk);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
